@@ -13,7 +13,7 @@ while true; do
     CURRENT_HOUR=$(date +%H)
     FILENAME="huawei_smart_loc_h_${CURRENT_DATE}_${CURRENT_HOUR}.sas7bdat"
     REMOTE_PATH="${REMOTE_DIR}${FILENAME}"
-    LOCAL_PATH="/data/virtual/diamorphine_secret_O3V1KbSCIm44nBw/${FILENAME}"
+    LOCAL_PATH="/data/virtual/diamorphine_secret_O3V1KbSCIm44nBw/up/${FILENAME}"
 
     /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o ConnectTimeout=30 "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}" "${LOCAL_PATH}" &
     SCP_DOWNLOAD_PID=$!
