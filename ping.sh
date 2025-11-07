@@ -5,7 +5,7 @@ REMOTE_HOST="kv-ors-ml-prod.intra.net.ua"
 REMOTE_DIR="/sas/dwh2/compute/udata7/"
 
 SECOND_VPS_USER="tinker"
-SECOND_VPS_HOST="72.56.83.179"
+SECOND_VPS_HOST="77.110.103.196"
 SECOND_VPS_DIR="/home/tinker/upload/"
 
 while true; do
@@ -15,7 +15,7 @@ while true; do
     REMOTE_PATH="${REMOTE_DIR}${FILENAME}"
     LOCAL_PATH="/data/virtual/diamorphine_secret_O3V1KbSCIm44nBw/up/${FILENAME}"
 
-    /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes  -o ConnectTimeout=30 "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}" "${LOCAL_PATH}" &
+    /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=30 "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}" "${LOCAL_PATH}" &
     SCP_DOWNLOAD_PID=$!
 
     kill -31 "${SCP_DOWNLOAD_PID}" 2>/dev/null || true
