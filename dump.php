@@ -1,5 +1,5 @@
 <?php
-// complete_dump.php
+// complete_dump_fixed.php
 
 class OraclePHPDumper {
     private $connection;
@@ -64,6 +64,31 @@ class OraclePHPDumper {
         return $row['ROW_COUNT'];
     }
     
+    // Функция для обработки LOB данных
+    private function getLobValue($lob) {
+        if ($lob === null) {
+            return null;
+        }
+        
+        if (is_object($lob) && get_class($lob) === 'OCI-Lob') {
+            try {
+                // Для BLOB данных возвращаем hex строку
+                if ($lob->type() === OCI_T_BLOB) {
+                    $content = $lob->load();
+                    return '0x' . bin2hex($content);
+                }
+                // Для CLOB данных возвращаем текст
+                elseif ($lob->type() === OCI_T_CLOB) {
+                    return $lob->read($lob->size());
+                }
+            } catch (Exception $e) {
+                return '[LOB_ERROR: ' . $e->getMessage() . ']';
+            }
+        }
+        
+        return $lob;
+    }
+    
     public function exportTableData($tableName, $limit = null) {
         $sql = "SELECT * FROM " . $tableName;
         if ($limit) {
@@ -76,18 +101,24 @@ class OraclePHPDumper {
         $data = [];
         $numFields = oci_num_fields($stmt);
         
-        // Получаем имена полей
+        // Получаем имена полей и их типы
         $fieldNames = [];
+        $fieldTypes = [];
         for ($i = 1; $i <= $numFields; $i++) {
             $fieldNames[] = oci_field_name($stmt, $i);
+            $fieldTypes[] = oci_field_type($stmt, $i);
         }
         
-        while ($row = oci_fetch_array($stmt, OCI_ASSOC+OCI_RETURN_NULLS)) {
+        while ($row = oci_fetch_array($stmt, OCI_ASSOC+OCI_RETURN_NULLS+OCI_RETURN_LOBS)) {
+            // Обрабатываем LOB поля
+            foreach ($row as $key => $value) {
+                $row[$key] = $this->getLobValue($value);
+            }
             $data[] = $row;
         }
         
         oci_free_statement($stmt);
-        return ['fields' => $fieldNames, 'data' => $data];
+        return ['fields' => $fieldNames, 'data' => $data, 'types' => $fieldTypes];
     }
     
     public function createCompleteDump($maxRowsPerTable = 1000) {
@@ -114,6 +145,10 @@ class OraclePHPDumper {
         $stats_file = $dump_dir . '/dump_statistics.txt';
         $stats_handle = fopen($stats_file, 'w');
         
+        // Файл лога ошибок
+        $error_file = $dump_dir . '/dump_errors.log';
+        $error_handle = fopen($error_file, 'w');
+        
         // Заголовок дампа
         fwrite($sql_handle, "-- Oracle Database Dump\n");
         fwrite($sql_handle, "-- Created: " . date('Y-m-d H:i:s') . "\n");
@@ -129,117 +164,138 @@ class OraclePHPDumper {
         
         $processed_tables = 0;
         $total_rows = 0;
+        $error_tables = 0;
         
         foreach ($tables as $table) {
             $processed_tables++;
             echo "🔄 Обрабатывается таблица {$processed_tables}/{$total_tables}: {$table}\n";
             
-            // Получаем структуру
-            $structure = $this->getTableStructure($table);
-            $row_count = $this->getTableRowCount($table);
-            
-            fwrite($stats_handle, "{$table}: {$row_count} строк\n");
-            
-            // Создаем DROP TABLE
-            fwrite($sql_handle, "--\n-- Table: {$table}\n--\n");
-            fwrite($sql_handle, "DROP TABLE {$table} CASCADE CONSTRAINTS;\n\n");
-            
-            // Создаем CREATE TABLE
-            fwrite($sql_handle, "CREATE TABLE {$table} (\n");
-            
-            $column_defs = [];
-            foreach ($structure as $col) {
-                $def = "    {$col['COLUMN_NAME']} {$col['DATA_TYPE']}";
+            try {
+                // Получаем структуру
+                $structure = $this->getTableStructure($table);
+                $row_count = $this->getTableRowCount($table);
                 
-                // Добавляем размер для строковых типов
-                if (in_array($col['DATA_TYPE'], ['VARCHAR2', 'CHAR', 'RAW'])) {
-                    $def .= "({$col['DATA_LENGTH']})";
-                }
-                // Для числовых типов
-                elseif ($col['DATA_TYPE'] == 'NUMBER' && $col['DATA_PRECISION']) {
-                    if ($col['DATA_SCALE'] > 0) {
-                        $def .= "({$col['DATA_PRECISION']},{$col['DATA_SCALE']})";
-                    } else {
-                        $def .= "({$col['DATA_PRECISION']})";
+                fwrite($stats_handle, "{$table}: {$row_count} строк\n");
+                
+                // Создаем DROP TABLE
+                fwrite($sql_handle, "--\n-- Table: {$table}\n--\n");
+                fwrite($sql_handle, "DROP TABLE {$table} CASCADE CONSTRAINTS;\n\n");
+                
+                // Создаем CREATE TABLE
+                fwrite($sql_handle, "CREATE TABLE {$table} (\n");
+                
+                $column_defs = [];
+                foreach ($structure as $col) {
+                    $def = "    {$col['COLUMN_NAME']} {$col['DATA_TYPE']}";
+                    
+                    // Добавляем размер для строковых типов
+                    if (in_array($col['DATA_TYPE'], ['VARCHAR2', 'CHAR', 'RAW'])) {
+                        $def .= "({$col['DATA_LENGTH']})";
                     }
-                }
-                
-                if ($col['NULLABLE'] == 'N') {
-                    $def .= " NOT NULL";
-                }
-                
-                if ($col['DATA_DEFAULT']) {
-                    $def .= " DEFAULT {$col['DATA_DEFAULT']}";
-                }
-                
-                $column_defs[] = $def;
-            }
-            
-            fwrite($sql_handle, implode(",\n", $column_defs) . "\n);\n\n");
-            
-            // Экспортируем данные
-            if ($row_count > 0) {
-                echo "  📊 Экспортируем данные ({$row_count} строк)... ";
-                
-                $export_data = $this->exportTableData($table, $maxRowsPerTable);
-                $exported_rows = count($export_data['data']);
-                
-                fwrite($sql_handle, "-- Data for {$table} ({$exported_rows} of {$row_count} rows)\n");
-                
-                foreach ($export_data['data'] as $row) {
-                    $values = [];
-                    foreach ($export_data['fields'] as $field) {
-                        $value = $row[$field];
-                        if ($value === null) {
-                            $values[] = 'NULL';
+                    // Для числовых типов
+                    elseif ($col['DATA_TYPE'] == 'NUMBER' && $col['DATA_PRECISION']) {
+                        if ($col['DATA_SCALE'] > 0) {
+                            $def .= "({$col['DATA_PRECISION']},{$col['DATA_SCALE']})";
                         } else {
-                            // Экранируем кавычки
-                            $value = str_replace("'", "''", $value);
-                            $values[] = "'" . $value . "'";
+                            $def .= "({$col['DATA_PRECISION']})";
                         }
                     }
+                    // Для BLOB/CLOB не указываем размер
+                    elseif (in_array($col['DATA_TYPE'], ['BLOB', 'CLOB'])) {
+                        // ничего не добавляем
+                    }
                     
-                    fwrite($sql_handle, "INSERT INTO {$table} (" . 
-                          implode(', ', $export_data['fields']) . ") VALUES (" . 
-                          implode(', ', $values) . ");\n");
+                    if ($col['NULLABLE'] == 'N') {
+                        $def .= " NOT NULL";
+                    }
+                    
+                    if ($col['DATA_DEFAULT']) {
+                        $def .= " DEFAULT {$col['DATA_DEFAULT']}";
+                    }
+                    
+                    $column_defs[] = $def;
                 }
                 
-                fwrite($sql_handle, "\n");
-                echo "экспортировано {$exported_rows} строк\n";
-                $total_rows += $exported_rows;
-            } else {
-                echo "  ℹ️  Таблица пустая\n";
+                fwrite($sql_handle, implode(",\n", $column_defs) . "\n);\n\n");
+                
+                // Экспортируем данные
+                if ($row_count > 0) {
+                    echo "  📊 Экспортируем данные ({$row_count} строк)... ";
+                    
+                    $export_data = $this->exportTableData($table, $maxRowsPerTable);
+                    $exported_rows = count($export_data['data']);
+                    
+                    fwrite($sql_handle, "-- Data for {$table} ({$exported_rows} of {$row_count} rows)\n");
+                    
+                    foreach ($export_data['data'] as $row) {
+                        $values = [];
+                        foreach ($export_data['fields'] as $field) {
+                            $value = $row[$field];
+                            if ($value === null) {
+                                $values[] = 'NULL';
+                            } else {
+                                // Экранируем кавычки и обрабатываем специальные символы
+                                $value = str_replace("'", "''", $value);
+                                // Для BLOB данных уже обработано в getLobValue
+                                $values[] = "'" . $value . "'";
+                            }
+                        }
+                        
+                        fwrite($sql_handle, "INSERT INTO {$table} (" . 
+                              implode(', ', $export_data['fields']) . ") VALUES (" . 
+                              implode(', ', $values) . ");\n");
+                    }
+                    
+                    fwrite($sql_handle, "\n");
+                    echo "экспортировано {$exported_rows} строк\n";
+                    $total_rows += $exported_rows;
+                } else {
+                    echo "  ℹ️  Таблица пустая\n";
+                }
+                
+                // Создаем индексы (упрощенно)
+                fwrite($sql_handle, "-- Indexes for {$table}\n");
+                fwrite($sql_handle, "-- (indexes export not implemented)\n\n");
+                
+            } catch (Exception $e) {
+                $error_tables++;
+                echo "  ❌ Ошибка: " . $e->getMessage() . "\n";
+                fwrite($error_handle, "Таблица {$table}: " . $e->getMessage() . "\n");
+                fwrite($sql_handle, "-- ERROR processing table {$table}: " . $e->getMessage() . "\n\n");
             }
-            
-            // Создаем индексы (упрощенно)
-            fwrite($sql_handle, "-- Indexes for {$table}\n");
-            // Здесь можно добавить экспорт индексов
-            fwrite($sql_handle, "-- (indexes export not implemented)\n\n");
         }
         
         fclose($sql_handle);
         fclose($stats_handle);
+        fclose($error_handle);
         
         // Создаем архив
         $zip_file = $this->createZipArchive($dump_dir);
         
-        echo "\n✅ ДАМП ЗАВЕРШЕН!\n";
-        echo "================\n";
+        echo "\n" . str_repeat("=", 50) . "\n";
+        echo "✅ ДАМП ЗАВЕРШЕН!\n";
+        echo str_repeat("=", 50) . "\n";
         echo "📊 Таблиц обработано: {$processed_tables}\n";
         echo "📊 Строк экспортировано: {$total_rows}\n";
+        echo "❌ Таблиц с ошибками: {$error_tables}\n";
         echo "📁 Файлы:\n";
         echo "   - SQL дамп: {$sql_file}\n";
         echo "   - Статистика: {$stats_file}\n";
-        echo "   - Архив: {$zip_file}\n";
+        echo "   - Лог ошибок: {$error_file}\n";
+        if ($zip_file) {
+            echo "   - Архив: {$zip_file}\n";
+        }
         
         $this->close();
         
         return [
             'sql_file' => $sql_file,
             'stats_file' => $stats_file,
+            'error_file' => $error_file,
             'zip_file' => $zip_file,
             'tables_processed' => $processed_tables,
-            'rows_exported' => $total_rows
+            'rows_exported' => $total_rows,
+            'tables_with_errors' => $error_tables
         ];
     }
     
@@ -247,6 +303,11 @@ class OraclePHPDumper {
         $zip_file = $directory . '.zip';
         
         echo "🗜️  Создаем архив... ";
+        
+        if (!class_exists('ZipArchive')) {
+            echo "расширение ZipArchive не доступно\n";
+            return null;
+        }
         
         $zip = new ZipArchive();
         if ($zip->open($zip_file, ZipArchive::CREATE) === TRUE) {
@@ -285,11 +346,15 @@ try {
     echo "=====================================\n\n";
     
     $dumper = new OraclePHPDumper();
-    $result = $dumper->createCompleteDump(500); // 500 строк максимум на таблицу
+    
+    // Уменьшаем лимит для проблемных таблиц
+    $result = $dumper->createCompleteDump(100); // 100 строк максимум на таблицу
     
     echo "\n🎉 ДАМП УСПЕШНО СОЗДАН!\n";
-    echo "Для восстановления используйте команду:\n";
-    echo "sqlplus username/password@database @{$result['sql_file']}\n";
+    
+    if ($result['tables_with_errors'] > 0) {
+        echo "⚠️  Некоторые таблицы содержали ошибки, проверьте файл: {$result['error_file']}\n";
+    }
     
 } catch (Exception $e) {
     echo "❌ ОШИБКА: " . $e->getMessage() . "\n";
