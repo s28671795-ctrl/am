@@ -3,7 +3,7 @@
 
 class OraclePHPDumper {
     private $connection;
-    private $username = 'mnp_prod';
+    private $username = 'mnp';
     private $password = 's$r$FKjp4t';
     private $connection_string = '(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.8.8.16)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=mnp.it.com)))';
     
