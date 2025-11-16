@@ -1,14 +1,11 @@
 <?php
-// final_dump_itc.php
+// dump_adnum_final.php
 
-class FinalOracleDumper {
+class AdnumOracleDumper {
     private $connection;
-    private $username = 'ITC';
-    private $password = 'upkV9V32';
-    private $connection_string = '(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.8.8.75)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=dwh.it.com)))';
-    
-    // Таблицы которые нужно пропустить из-за LOB полей
-    private $skip_tables = ['QUEUE', 'QUEUE_COPY2', 'QUEUE_IN_COPY', 'QUEUE_OUT'];
+    private $username = 'adnum';
+    private $password = 'it';
+    private $connection_string = '(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.8.8.75)(PORT=1521)))(CONNECT_DATA=(SID=dwh.it.com)))';
     
     public function connect() {
         $this->connection = oci_connect($this->username, $this->password, $this->connection_string, 'AL32UTF8');
@@ -31,50 +28,44 @@ class FinalOracleDumper {
         return $tables;
     }
     
-    public function createFinalDump() {
+    public function createDump() {
         $this->connect();
         
         $timestamp = date('Y-m-d_H-i-s');
-        $dump_dir = '/tmp/oracle_itc_dump_' . $timestamp;
+        $dump_dir = '/tmp/adnum_dump_' . $timestamp;
         
         if (!is_dir($dump_dir)) {
             mkdir($dump_dir, 0755, true);
         }
         
-        echo "🚀 СОЗДАНИЕ ДАМПА БАЗЫ ITC\n";
-        echo "===========================\n";
+        echo "🚀 СОЗДАНИЕ ДАМПА СХЕМЫ ADNUM\n";
+        echo "==============================\n";
         echo "📁 Директория: {$dump_dir}\n";
-        echo "⏭️  Пропускаем таблицы: " . implode(', ', $this->skip_tables) . "\n\n";
+        echo "👤 Пользователь: {$this->username}\n";
+        echo "🔗 SID: dwh.it.com\n\n";
         
-        $sql_file = $dump_dir . '/itc_complete_dump.sql';
+        $sql_file = $dump_dir . '/adnum_schema_dump.sql';
         $handle = fopen($sql_file, 'w');
         
-        fwrite($handle, "-- Oracle Database Dump - ITC Schema\n");
+        fwrite($handle, "-- Oracle Database Dump - ADNUM Schema\n");
         fwrite($handle, "-- Created: " . date('Y-m-d H:i:s') . "\n");
         fwrite($handle, "-- Schema: " . $this->username . "\n");
         fwrite($handle, "-- Host: 10.8.8.75:1521\n");
-        fwrite($handle, "-- Service: dwh.it.com\n");
-        fwrite($handle, "-- Skipped tables (LOB): " . implode(', ', $this->skip_tables) . "\n");
+        fwrite($handle, "-- SID: dwh.it.com\n");
         fwrite($handle, "SET DEFINE OFF;\n\n");
         
         $tables = $this->getTables();
         $processed = 0;
-        $skipped = 0;
+        $total_rows = 0;
         
         foreach ($tables as $table) {
-            if (in_array($table, $this->skip_tables)) {
-                echo "⏭️  Пропускаем: {$table} (LOB поля)\n";
-                fwrite($handle, "-- SKIPPED TABLE: {$table} (contains LOB fields)\n\n");
-                $skipped++;
-                continue;
-            }
-            
             $processed++;
             echo "🔄 {$processed}. Обрабатываем: {$table}\n";
             
             try {
-                $this->dumpTable($handle, $table, 500);
-                echo "   ✅ Успешно\n";
+                $rows_exported = $this->dumpTable($handle, $table, 100);
+                $total_rows += $rows_exported;
+                echo "   ✅ Экспортировано строк: {$rows_exported}\n";
             } catch (Exception $e) {
                 echo "   ❌ Ошибка: " . $e->getMessage() . "\n";
                 fwrite($handle, "-- ERROR: " . $e->getMessage() . "\n\n");
@@ -85,20 +76,20 @@ class FinalOracleDumper {
         $this->close();
         
         // Создаем статистику
-        $this->createStatsFile($dump_dir, count($tables), $processed, $skipped);
+        $this->createStatsFile($dump_dir, count($tables), $processed, $total_rows);
         
         echo "\n" . str_repeat("=", 50) . "\n";
-        echo "✅ ДАМП УСПЕШНО ЗАВЕРШЕН!\n";
+        echo "✅ ДАМП ADNUM УСПЕШНО ЗАВЕРШЕН!\n";
         echo str_repeat("=", 50) . "\n";
         echo "📊 Всего таблиц: " . count($tables) . "\n";
         echo "✅ Обработано: {$processed}\n";
-        echo "⏭️  Пропущено: {$skipped}\n";
+        echo "📊 Строк экспортировано: {$total_rows}\n";
         echo "📁 Файл дампа: {$sql_file}\n";
         
         return $dump_dir;
     }
     
-    private function dumpTable($handle, $tableName, $limit = 500) {
+    private function dumpTable($handle, $tableName, $limit = 100) {
         // Структура таблицы
         $structure = $this->getTableStructure($tableName);
         
@@ -133,14 +124,12 @@ class FinalOracleDumper {
         
         fwrite($handle, implode(",\n", $columns) . "\n);\n\n");
         
-        // Данные таблицы (только если нет LOB полей)
-        if (!$this->hasLobColumns($tableName)) {
-            $this->dumpTableData($handle, $tableName, $limit);
-        } else {
-            fwrite($handle, "-- Data skipped - table contains LOB columns\n\n");
-        }
+        // Данные таблицы
+        $rows_exported = $this->dumpTableData($handle, $tableName, $limit);
         
         fwrite($handle, "-- End of table {$tableName}\n\n");
+        
+        return $rows_exported;
     }
     
     private function getTableStructure($tableName) {
@@ -171,12 +160,18 @@ class FinalOracleDumper {
     }
     
     private function dumpTableData($handle, $tableName, $limit) {
+        // Проверяем на LOB поля
+        if ($this->hasLobColumns($tableName)) {
+            fwrite($handle, "-- Data skipped - table contains LOB columns\n");
+            return 0;
+        }
+        
         $sql = "SELECT * FROM {$tableName} WHERE ROWNUM <= {$limit}";
         $stmt = oci_parse($this->connection, $sql);
         
         if (!oci_execute($stmt)) {
-            fwrite($handle, "-- Data skipped - query error: " . oci_error($stmt)['message'] . "\n");
-            return;
+            fwrite($handle, "-- Data skipped - query error\n");
+            return 0;
         }
         
         $num_fields = oci_num_fields($stmt);
@@ -197,10 +192,9 @@ class FinalOracleDumper {
                 if ($value === null) {
                     $values[] = 'NULL';
                 } else {
-                    // Экранируем и обрезаем слишком длинные значения
                     $value = str_replace("'", "''", $value);
-                    if (strlen($value) > 2000) {
-                        $value = substr($value, 0, 2000) . '...';
+                    if (strlen($value) > 1000) {
+                        $value = substr($value, 0, 1000) . '...';
                     }
                     $values[] = "'" . $value . "'";
                 }
@@ -214,6 +208,8 @@ class FinalOracleDumper {
         
         fwrite($handle, "-- Total rows exported: {$row_count}\n\n");
         oci_free_statement($stmt);
+        
+        return $row_count;
     }
     
     private function hasLobColumns($tableName) {
@@ -242,39 +238,32 @@ class FinalOracleDumper {
         return $row['CNT'];
     }
     
-    private function createStatsFile($dump_dir, $total_tables, $processed, $skipped) {
+    private function createStatsFile($dump_dir, $total_tables, $processed, $total_rows) {
         $stats_file = $dump_dir . '/STATISTICS.txt';
         $content = "
-Oracle Database Dump Statistics - ITC Schema
-============================================
+Oracle Database Dump Statistics - ADNUM Schema
+==============================================
 
 Date: " . date('Y-m-d H:i:s') . "
 Schema: {$this->username}
 Host: 10.8.8.75:1521
-Service: dwh.it.com
+SID: dwh.it.com
 
 Summary:
 --------
 Total Tables: {$total_tables}
 Successfully Processed: {$processed}
-Skipped (LOB fields): {$skipped}
-
-Skipped Tables (due to LOB fields):
-- QUEUE
-- QUEUE_COPY2 
-- QUEUE_IN_COPY
-- QUEUE_OUT
+Total Rows Exported: {$total_rows}
 
 The dump file contains:
 - Table structures (CREATE TABLE)
-- Sample data (up to 500 rows per table, excluding LOB fields)
+- Sample data (up to 100 rows per table, excluding LOB fields)
 - Ready to import SQL commands
 
 To restore, use:
-sqlplus ITC/upkV9V32@//10.8.8.75:1521/dwh.it.com @itc_complete_dump.sql
+sqlplus adnum/it@//10.8.8.75:1521/dwh.it.com @adnum_schema_dump.sql
 
-Note: Tables with BLOB/CLOB fields were skipped as they require
-special handling and can be very large.
+Note: Tables with BLOB/CLOB fields were skipped.
         ";
         
         file_put_contents($stats_file, $content);
@@ -287,12 +276,12 @@ special handling and can be very large.
     }
 }
 
-// Запуск дампа для ITC
+// Запуск дампа для adnum
 try {
-    $dumper = new FinalOracleDumper();
-    $result_dir = $dumper->createFinalDump();
+    $dumper = new AdnumOracleDumper();
+    $result_dir = $dumper->createDump();
     
-    echo "\n🎉 ДАМП СХЕМЫ ITC УСПЕШНО СОЗДАН!\n";
+    echo "\n🎉 ДАМП СХЕМЫ ADNUM УСПЕШНО СОЗДАН!\n";
     echo "📋 Проверьте файлы в директории: {$result_dir}\n";
     
 } catch (Exception $e) {
