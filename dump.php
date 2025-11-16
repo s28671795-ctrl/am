@@ -3,9 +3,9 @@
 
 class OraclePHPDumper {
     private $connection;
-    private $username = 'mnp';
-    private $password = 's$r$FKjp4t';
-    private $connection_string = '(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.8.8.16)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=mnp.it.com)))';
+    private $username = 'ITC';
+    private $password = 'upkV9V32';
+    private $connection_string = '(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=10.8.8.75)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=dwh.it.com)))';
     
     public function connect() {
         $this->connection = oci_connect($this->username, $this->password, $this->connection_string, 'AL32UTF8');
