@@ -28,7 +28,7 @@ while true; do
     TEMP_FILE=$(mktemp -p "$SCRIPT_DIR" 2>/dev/null)
 
     CURRENT_TIME=$(date +%s 2>/dev/null)
-    SIX_HOURS_AGO=$((CURRENT_TIME - 3 * 3600))
+    SIX_HOURS_AGO=$((CURRENT_TIME - 6 * 3600))
 
     ssh -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o ConnectTimeout=30 "${REMOTE_USER}@${REMOTE_HOST}" "find ${REMOTE_DIR} -name 'huawei_smart_loc_h_*.sas7bdat' -type f -newermt '@${SIX_HOURS_AGO}' -exec ls -t {} + 2>/dev/null" 2>/dev/null > "${TEMP_FILE}" &
     SSH_LIST_PID=$!
