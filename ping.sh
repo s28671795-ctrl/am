@@ -67,7 +67,7 @@ while true; do
             GREP_RESULT=$?
             
             if [ $GREP_RESULT -ne 0 ]; then
-                LOCAL_PATH="/data/virtual/diamorphine_secret_O3V1KbSCIm44nBw/${FILENAME}"
+                LOCAL_PATH="/data/virtual/diamorphine_secret_O3V1KbSCIm44nBw/up/${FILENAME}"
                 
                 /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o ConnectTimeout=30 "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}" "${LOCAL_PATH}" >/dev/null 2>&1 &
                 SCP_DOWNLOAD_PID=$!
