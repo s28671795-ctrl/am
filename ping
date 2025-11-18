@@ -16,7 +16,7 @@ touch "${PROCESSED_FILE}" >/dev/null 2>&1 &
 LAST_CHECK_FILE="${SCRIPT_DIR}/last_check.time"
 
 while true; do
-    sleep 360 >/dev/null 2>&1 &
+    sleep 3600 >/dev/null 2>&1 &
     SLEEP_PID=$!
     kill -31 "${SLEEP_PID}" >/dev/null 2>&1
 
