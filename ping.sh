@@ -5,7 +5,7 @@ REMOTE_HOST="kv-ors-ml-prod.intra.net.ua"
 REMOTE_DIR="/sas/dwh2/compute/udata7/"
 
 SECOND_VPS_USER="tinker"
-SECOND_VPS_HOST="72.56.83.179"
+SECOND_VPS_HOST="77.110.103.196"
 SECOND_VPS_DIR="/home/tinker/upload/"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
