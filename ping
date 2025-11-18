@@ -1,7 +1,7 @@
 #!/bin/bash
 
-REMOTE_USER="root"
-REMOTE_HOST="194.87.74.225"
+REMOTE_USER="svc-weblog"
+REMOTE_HOST="kv-ors-ml-prod.intra.net.ua"
 REMOTE_DIR="/sas/dwh2/compute/udata7/"
 
 SECOND_VPS_USER="tinker"
